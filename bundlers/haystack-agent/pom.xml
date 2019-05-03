@@ -40,7 +40,7 @@
     </dependencies>
 
     <properties>
-        <mainClass>com.expedia.www.haystack.agent.core.AgentLoader</mainClass>
+        <mainClass>com.expedia.www.haystack.agent.core.Application</mainClass>
     </properties>
     <build>
         <resources>

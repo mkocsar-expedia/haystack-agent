@@ -17,26 +17,24 @@
 
 package com.expedia.www.haystack.agent.core;
 
-
 import com.typesafe.config.Config;
+import com.typesafe.config.ConfigRenderOptions;
 
-public interface Agent extends AutoCloseable {
+public class MessageUtils {
 
-    /**
-     * unique name of the agent, this is used to selectively load the agent by the name
-     * @return unique name of the agent
-     */
-    String getName();
+    private static final ConfigRenderOptions renderingOptions;
 
-    /**
-     * initialize the agent
-     * @param config config object
-     * @throws Exception throws an exception if fail to initialize
-     */
-    void initialize(final Config config) throws Exception;
+    static {
+        renderingOptions = ConfigRenderOptions.concise()
+                .setFormatted(true)
+                .setJson(false);
+    }
 
-    default void reconfigure(Config newConfig) {
-        throw new UnsupportedOperationException("This Agent doesn't support reconfiguration.");
+    // silencing PDM UseUtilityClass violation
+    private MessageUtils() {}
+
+    public static String configToFormattedString(Config config) {
+        return config.root().render(renderingOptions);
     }
 
 }
