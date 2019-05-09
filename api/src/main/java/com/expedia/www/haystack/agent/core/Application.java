@@ -31,13 +31,13 @@ import java.util.ServiceLoader;
 public class Application {
 
     private static final String CONFIG_READER_NAME_ARG = "--config-provider";
-    private static final String CONFIG_RELOADING_ARG = "--config-reloading";
+    private static final String CONFIG_REFRESHING_ARG = "--config-refreshing";
 
     private static final Logger logger = LoggerFactory.getLogger(Application.class);
 
     private static String configReaderName = "file";
     private static Map<String, String> configReaderArgs = new HashMap<>();
-    private static boolean configReloading = false;
+    private static boolean configRefreshing = false;
 
     // silencing PDM UseUtilityClass violation
     private Application() {}
@@ -48,10 +48,10 @@ public class Application {
         SharedMetricRegistry.startJmxMetricReporter();
 
         ConfigReader configReader = findConfigReader(configReaderName);
-        logger.info("Using {} with args {}, config reloading: {}.", configReader.getClass().getName(),
-                configReaderArgs, configReloading);
+        logger.info("Using {} with args {}, config refreshing: {}.", configReader.getClass().getName(),
+                configReaderArgs, configRefreshing);
 
-        AgentManager agentManager = new AgentManager(configReader, configReaderArgs, configReloading);
+        AgentManager agentManager = new AgentManager(configReader, configReaderArgs, configRefreshing);
         agentManager.start();
 
         Thread jmxMetricReporterCloser = new Thread(SharedMetricRegistry::closeJmxMetricReporter);
@@ -63,8 +63,8 @@ public class Application {
             if (args[index].equals(CONFIG_READER_NAME_ARG)) {
                 configReaderName = args[index + 1];
                 ++index;
-            } else if (args[index].equals(CONFIG_RELOADING_ARG)) {
-                configReloading = true;
+            } else if (args[index].equals(CONFIG_REFRESHING_ARG)) {
+                configRefreshing = true;
             } else {
                 configReaderArgs.put(args[index], args[index + 1]);
                 ++index;

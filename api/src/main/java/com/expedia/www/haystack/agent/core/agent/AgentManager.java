@@ -27,144 +27,188 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.*;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
 
 public class AgentManager {
+
+    private static final long CONFIG_REFRESHING_RATE_IN_SECONDS = 5;
 
     private static final Logger logger = LoggerFactory.getLogger(AgentManager.class);
 
     private ConfigReader configReader;
     private Map<String, String> configReaderArgs;
-    private boolean configReloading;
+    private boolean configRefreshing;
 
-    private Map<String, Agent> agents = new HashMap<>();
+    private Config currentApplicationConfig;
+
+    private Map<String, Agent> availableAgents = new HashMap<>();
     private Map<Agent, Config> runningAgentsWithConfig = new HashMap<>();
 
-    public AgentManager(ConfigReader configReader, Map<String, String> configReaderArgs, boolean configReloading) {
+    public AgentManager(ConfigReader configReader, Map<String, String> configReaderArgs, boolean configRefreshing) {
         this.configReader = configReader;
         this.configReaderArgs = configReaderArgs;
-        this.configReloading = configReloading;
+        this.configRefreshing = configRefreshing;
 
         loadAgents();
     }
 
     public void start() {
-        Config loadedEntireConfig;
-        try {
-            logger.info("Loading config...");
-            loadedEntireConfig = configReader.read(configReaderArgs);
-            logger.info("Loaded config:\n{}", MessageUtils.configToFormattedString(loadedEntireConfig));
-        } catch (Exception exception) {
-            throw new RuntimeException("Failed to load config.", exception);
+        Config initialApplicationConfig = loadInitialApplicationConfig();
+        applyApplicationConfig(initialApplicationConfig);
+
+        if (configRefreshing) {
+            scheduleConfigRefresher();
         }
 
-        Map<String, Config> loadedAgentConfigs = ConfigurationHelpers.readAgentConfigs(loadedEntireConfig);
-        loadedAgentConfigs.forEach((agentName, agentConfig) -> {
-            try {
-                applyAgentConfig(agentName, agentConfig);
-            } catch (Exception exception) {
-                logger.error("An exception occurred while applying config to Agent \"{}\". config:\n{}", agentName,
-                        MessageUtils.configToFormattedString(agentConfig), exception);
-            }
-        });
-
-        if (configReloading) {
-            // TODO: implement config reloading; probably via ScheduledThreadPoolExecutor
-        }
-
-        Thread agentCloserHook = new Thread(() -> {
-            Set<Agent> agents = new HashSet<>(runningAgentsWithConfig.keySet());
-            agents.forEach(this::stopAgent);
-        });
-        Runtime.getRuntime().addShutdownHook(agentCloserHook);
+        registerAgentCloserShutdownHook();
     }
 
     private void loadAgents() {
-        logger.info("Loading Agents...");
-
-        List<String> agentClassNames = new LinkedList<>();
+        List<String> agentClassesAndNames = new LinkedList<>();
         ServiceLoader<Agent> agentLoader = ServiceLoader.load(Agent.class);
         agentLoader.forEach(agent -> {
-            agents.put(agent.getName(), agent);
-            agentClassNames.add(agent.getClass().getName());
+            availableAgents.put(agent.getName(), agent);
+            agentClassesAndNames.add(agent.getClass().getName() + " (" + agent.getName() + ")");
         });
 
-        logger.info("Loaded Agents: {}", String.join(", ", agentClassNames));
+        logger.info("Loaded Agents: {}", String.join(", ", agentClassesAndNames));
     }
 
-    private void applyAgentConfig(String agentName, Config agentConfig) {
-        Agent agent = findAgent(agentName);
+    private Config loadInitialApplicationConfig() {
+        Config initialApplicationConfig;
+        try {
+            initialApplicationConfig = configReader.read(configReaderArgs);
+        } catch (Exception exception) {
+            logger.error("An exception occurred while loading initial configuration. Shutting down.", exception);
+            throw new RuntimeException(exception);
+        }
+        logger.info("Successfully loaded initial configuration.");
+        return initialApplicationConfig;
+    }
 
-        boolean disabled = agentConfig.hasPath("enabled") && ! agentConfig.getBoolean("enabled");
-        boolean runningBefore = runningAgentsWithConfig.containsKey(agent);
+    private void applyApplicationConfig(Config newApplicationConfig) {
+        logger.info("Applying application configuration:\n{}",
+                MessageUtils.configToFormattedString(newApplicationConfig));
+
+        Map<Agent, Config> newAgentConfigs = extractAgentConfigs(newApplicationConfig);
+
+        Set<Agent> runningAgents = new HashSet<>(runningAgentsWithConfig.keySet());
+        runningAgents.forEach(agent -> {
+            if (! newAgentConfigs.containsKey(agent)) {
+                logger.info("Currently running {} is not declared in the new configuration. Stopping it.",
+                        agent.getClass().getName());
+                stopAgent(agent);
+            }
+        });
+
+        newAgentConfigs.forEach(this::applyAgentConfig);
+
+        currentApplicationConfig = newApplicationConfig;
+    }
+
+    private Map<Agent, Config> extractAgentConfigs(Config applicationConfig) {
+        Map<Agent, Config> agentConfigs = new HashMap<>();
+        Map<String, Config> agentNamesAndConfigs = ConfigurationHelpers.readAgentConfigs(applicationConfig);
+        agentNamesAndConfigs.forEach((agentName, agentConfig) -> {
+            if (availableAgents.containsKey(agentName)) {
+                agentConfigs.put(availableAgents.get(agentName), agentConfig);
+            } else {
+                logger.error("No Agent implementation is available for name {}. Ignoring corresponding agent" +
+                        " declaration.", agentName);
+            }
+        });
+        return agentConfigs;
+    }
+
+    private void applyAgentConfig(Agent agent, Config newAgentConfig) {
+        boolean disabled = newAgentConfig.hasPath("enabled") && ! newAgentConfig.getBoolean("enabled");
+        boolean currentlyRunning = runningAgentsWithConfig.containsKey(agent);
 
         if (disabled) {
-            if (runningBefore) {
+            if (currentlyRunning) {
+                logger.info("Currently running {} is disabled in the new configuration. Stopping it.",
+                        agent.getClass().getName());
                 stopAgent(agent);
             } else {
-                logger.info("Ignoring disabled {}. config:\n{}", agent.getClass().getName(),
-                        MessageUtils.configToFormattedString(agentConfig));
+                logger.info("Ignoring disabled {}.", agent.getClass().getName());
             }
         } else {
-            if (runningBefore) {
-                boolean configChanged = ! runningAgentsWithConfig.get(agent).equals(agentConfig);
+            if (currentlyRunning) {
+                boolean configChanged = ! runningAgentsWithConfig.get(agent).equals(newAgentConfig);
                 if (configChanged) {
-                    reconfigureAgent(agent, agentConfig);
+                    logger.info("The configuration of currently running {} has changed. Reconfiguring it. New configuration:\n{}",
+                            agent.getClass().getName(), MessageUtils.configToFormattedString(newAgentConfig));
+                    reconfigureAgent(agent, newAgentConfig);
+                } else {
+                    logger.info("The configuration of currently running {} hasn't changed. Not altering it.",
+                            agent.getClass().getName());
                 }
             } else {
-                startAgent(agent, agentConfig);
+                logger.info("Starting {} with config:\n{}", agent.getClass().getName(),
+                        MessageUtils.configToFormattedString(newAgentConfig));
+                startAgent(agent, newAgentConfig);
             }
         }
-
     }
-
-    private Agent findAgent(String agentName) {
-        if (! agents.containsKey(agentName)) {
-            throw new RuntimeException("No Agent service-provider was found for name \"" + agentName + "\".");
-        }
-        return agents.get(agentName);
-    }
-
 
     private void startAgent(Agent agent, Config agentConfig) {
-        logger.info("Starting {} with config:\n{}", agent.getClass().getName(),
-                MessageUtils.configToFormattedString(agentConfig));
-
-        new Thread(() -> {
+        Thread agentThread = new Thread(() -> {
             try {
                 agent.initialize(agentConfig);
             } catch (Exception exception) {
-                logger.error("An exception occurred wile starting {} with config:\n{}", agent.getClass().getName(),
-                        MessageUtils.configToFormattedString(agentConfig), exception);
+                logger.error("An exception occurred wile starting {}.", agent.getClass().getName(), exception);
             }
-        }).start();
-
+        });
+        agentThread.start();
         runningAgentsWithConfig.put(agent, agentConfig);
     }
 
     private void reconfigureAgent(Agent agent, Config newConfig) {
-        logger.info("Reconfiguring {} with new config:\n{}", agent.getClass().getName(),
-                MessageUtils.configToFormattedString(newConfig));
-
         try {
             agent.reconfigure(newConfig);
+            logger.info("Successfully reconfigured {}.", agent.getClass().getName());
         } catch (Exception exception) {
-            logger.error("An exception occurred wile reconfiguring {} with new config:\n{}", agent.getClass().getName(),
-                    MessageUtils.configToFormattedString(newConfig), exception);
+            logger.error("An exception occurred wile reconfiguring {}.", agent.getClass().getName(), exception);
         }
-
         runningAgentsWithConfig.put(agent, newConfig);
     }
 
     private void stopAgent(Agent agent) {
-        logger.info("Stopping {}", agent.getClass().getName());
-
         try {
             agent.close();
+            logger.info("Successfully stopped {}.", agent.getClass().getName());
         } catch (Exception exception) {
-            logger.error("An exception occurred while stopping {}", agent.getClass().getName(), exception);
+            logger.error("An exception occurred while stopping {}.", agent.getClass().getName(), exception);
         }
-
         runningAgentsWithConfig.remove(agent);
+    }
+
+    private void scheduleConfigRefresher() {
+        Runnable configRefresher = () -> {
+            try {
+                Config loadedApplicationConfig = configReader.read(configReaderArgs);
+                if (! loadedApplicationConfig.equals(currentApplicationConfig)) {
+                    logger.info("Configuration change detected.");
+                    applyApplicationConfig(loadedApplicationConfig);
+                }
+            } catch (Exception exception) {
+                logger.error("An exception occurred while refreshing configuration. Continuing to operate" +
+                        " according to the current configuration.", exception);
+            }
+        };
+
+        ScheduledExecutorService scheduledExecutor = Executors.newSingleThreadScheduledExecutor();
+        scheduledExecutor.scheduleAtFixedRate(configRefresher,0,CONFIG_REFRESHING_RATE_IN_SECONDS, TimeUnit.SECONDS);
+    }
+
+    private void registerAgentCloserShutdownHook() {
+        Thread agentCloserHook = new Thread(() -> {
+            Set<Agent> runningAgents = new HashSet<>(runningAgentsWithConfig.keySet());
+            runningAgents.forEach(this::stopAgent);
+        });
+        Runtime.getRuntime().addShutdownHook(agentCloserHook);
     }
 
 }
