@@ -32,7 +32,7 @@ class AgentLoaderSpec extends FunSpec with Matchers {
   describe("Agent Loader") {
     it("should load the config spi") {
       val cl = new ReplacingClassLoader(getClass.getClassLoader, configServiceFile, "configProvider.txt")
-      val cfg = new AgentLoader().loadConfig("file", new util.HashMap[String, String], cl)
+      val cfg = new AgentLoader().loadConfig("file", new java.util.HashMap[String, String], cl)
       cfg.getConfig("agents") should not be null
       cfg.getConfig("agents").hasPath("spans") shouldBe true
 
@@ -48,7 +48,7 @@ class AgentLoaderSpec extends FunSpec with Matchers {
     it("should fail to load the config spi with unknown name") {
       val cl = new ReplacingClassLoader(getClass.getClassLoader, configServiceFile, "configProvider.txt")
       val caught = intercept[ServiceConfigurationError] {
-        new AgentLoader().loadConfig("http", new util.HashMap[String, String], cl)
+        new AgentLoader().loadConfig("http", new java.util.HashMap[String, String], cl)
       }
       caught.getMessage shouldEqual "Fail to load the config provider for type = http"
     }

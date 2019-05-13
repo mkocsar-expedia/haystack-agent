@@ -17,9 +17,12 @@
 
 package com.expedia.www.haystack.agent.core.config;
 
+import com.expedia.www.haystack.agent.core.util.ServiceProviderNotFoundException;
+
 import com.typesafe.config.Config;
 
 import java.util.Map;
+import java.util.ServiceLoader;
 
 public interface ConfigReader {
     /**
@@ -36,4 +39,15 @@ public interface ConfigReader {
      * @throws Exception
      */
     Config read(final Map<String, String> args) throws Exception;
+
+    static ConfigReader forName(String name) {
+        ServiceLoader<ConfigReader> configReaderLoader = ServiceLoader.load(ConfigReader.class);
+        for (ConfigReader configReader : configReaderLoader) {
+            if (configReader.getName().equals(name)) {
+                return configReader;
+            }
+        }
+        throw new ServiceProviderNotFoundException(ConfigReader.class, name);
+    }
+
 }
