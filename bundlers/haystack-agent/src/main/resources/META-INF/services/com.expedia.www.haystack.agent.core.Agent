@@ -1,1 +1,3 @@
 com.expedia.www.haystack.agent.span.spi.SpanAgent
+com.expedia.www.haystack.agent.demo.NumberPrinterAgent
+com.expedia.www.haystack.agent.demo.LetterPrinterAgent
