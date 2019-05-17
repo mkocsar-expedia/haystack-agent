@@ -17,7 +17,6 @@
 
 package com.expedia.www.haystack.agent.core.agent;
 
-import com.expedia.www.haystack.agent.core.Agent;
 import com.expedia.www.haystack.agent.core.MessageUtils;
 import com.expedia.www.haystack.agent.core.config.ConfigReader;
 import com.expedia.www.haystack.agent.core.config.ConfigurationHelpers;
@@ -167,8 +166,12 @@ public class AgentManager {
 
     private void reconfigureAgent(Agent agent, Config newConfig) {
         try {
-            agent.reconfigure(newConfig);
-            logger.info("Successfully reconfigured {}.", agent.getClass().getName());
+            if (agent instanceof ReconfigurableAgent) {
+                ((ReconfigurableAgent)agent).reconfigure(newConfig);
+                logger.info("Successfully reconfigured {}.", agent.getClass().getName());
+            } else {
+                logger.warn("The configuration of non-reconfigurable {} has changed.", agent.getClass().getName());
+            }
         } catch (Exception exception) {
             logger.error("An exception occurred wile reconfiguring {}.", agent.getClass().getName(), exception);
         }

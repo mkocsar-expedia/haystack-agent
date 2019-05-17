@@ -15,7 +15,7 @@
  *
  */
 
-package com.expedia.www.haystack.agent.core;
+package com.expedia.www.haystack.agent.core.agent;
 
 
 import com.typesafe.config.Config;
@@ -34,9 +34,5 @@ public interface Agent extends AutoCloseable {
      * @throws Exception throws an exception if fail to initialize
      */
     void initialize(final Config config) throws Exception;
-
-    default void reconfigure(Config newConfig) {
-        throw new UnsupportedOperationException("This Agent doesn't support reconfiguration.");
-    }
 
 }

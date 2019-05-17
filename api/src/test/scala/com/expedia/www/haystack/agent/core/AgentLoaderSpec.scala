@@ -27,7 +27,7 @@ import org.scalatest.{Entry, FunSpec, Matchers}
 class AgentLoaderSpec extends FunSpec with Matchers {
 
   private val configServiceFile = "META-INF/services/com.expedia.www.haystack.agent.core.config.ConfigReader"
-  private val agentServiceFile = "META-INF/services/com.expedia.www.haystack.agent.core.Agent"
+  private val agentServiceFile = "META-INF/services/com.expedia.www.haystack.agent.core.agent.Agent"
 
   describe("Agent Loader") {
     it("should load the config spi") {
