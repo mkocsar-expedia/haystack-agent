@@ -17,7 +17,7 @@
 
 package com.expedia.www.haystack.agent.span.spi;
 
-import com.expedia.www.haystack.agent.core.Agent;
+import com.expedia.www.haystack.agent.core.agent.Agent;
 import com.expedia.www.haystack.agent.core.Dispatcher;
 import com.expedia.www.haystack.agent.core.config.ConfigurationHelpers;
 import com.expedia.www.haystack.agent.span.enricher.Enricher;

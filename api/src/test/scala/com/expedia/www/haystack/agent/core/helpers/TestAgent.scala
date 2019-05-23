@@ -1,6 +1,6 @@
 package com.expedia.www.haystack.agent.core.helpers
 
-import com.expedia.www.haystack.agent.core.Agent
+import com.expedia.www.haystack.agent.core.agent.Agent
 import com.typesafe.config.Config
 
 class TestAgent extends Agent {

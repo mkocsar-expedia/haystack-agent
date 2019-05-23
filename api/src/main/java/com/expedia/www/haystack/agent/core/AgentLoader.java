@@ -16,6 +16,7 @@
  */
 package com.expedia.www.haystack.agent.core;
 
+import com.expedia.www.haystack.agent.core.agent.Agent;
 import com.expedia.www.haystack.agent.core.config.ConfigReader;
 import com.expedia.www.haystack.agent.core.config.ConfigurationHelpers;
 import com.expedia.www.haystack.agent.core.metrics.SharedMetricRegistry;

@@ -15,23 +15,12 @@
  *
  */
 
-package com.expedia.www.haystack.agent.core;
+package com.expedia.www.haystack.agent.core.util;
 
+public class ServiceProviderNotFoundException extends RuntimeException {
 
-import com.typesafe.config.Config;
+    public ServiceProviderNotFoundException(Class<?> spiClass, String providerName) {
+        super("No " + spiClass.getName() + " implementation is available for name: " + providerName + ".");
+    }
 
-public interface Agent extends AutoCloseable {
-
-    /**
-     * unique name of the agent, this is used to selectively load the agent by the name
-     * @return unique name of the agent
-     */
-    String getName();
-
-    /**
-     * initialize the agent
-     * @param config config object
-     * @throws Exception throws an exception if fail to initialize
-     */
-    void initialize(final Config config) throws Exception;
 }
